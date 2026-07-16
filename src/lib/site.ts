@@ -14,6 +14,15 @@ export const SITE = {
   location: "Lima, Perú",
   /** URL pública del sitio; configúrala en producción vía NEXT_PUBLIC_SITE_URL. */
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  /**
+   * Endpoint de leads consumido DESDE EL NAVEGADOR. FormSubmit está detrás
+   * de Cloudflare y bloquea envíos server-side desde IPs de datacenter
+   * (Vercel), así que el formulario envía directo desde el navegador —el
+   * mismo patrón probado de la web anterior. Configurable por entorno.
+   */
+  leadsEndpoint:
+    process.env.NEXT_PUBLIC_LEADS_ENDPOINT ??
+    "https://formsubmit.co/ajax/myfixperu@gmail.com",
 } as const;
 
 export const WHATSAPP_LINK = `https://wa.me/${SITE.whatsapp}?text=${encodeURIComponent(

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   BUSINESS_TYPES,
+  buildWebhookPayload,
   LEAD_COUNTRIES,
   MAIN_PROBLEMS,
   validateLead,
@@ -71,6 +72,12 @@ export default function LeadForm() {
       website: formData.get("website"),
     };
 
+    // Honeypot: si el campo oculto viene con contenido, es un bot. No
+    // enviamos y salimos en silencio (no revelamos la detección).
+    if (typeof body.website === "string" && body.website.length > 0) {
+      return;
+    }
+
     const validation = validateLead(body);
     if (!validation.ok) {
       setErrors(validation.errors);
@@ -85,38 +92,39 @@ export default function LeadForm() {
     track("lead_form_submit");
 
     try {
-      const response = await fetch("/api/leads", {
+      // Envío DIRECTO desde el navegador a FormSubmit: pasa el challenge de
+      // Cloudflare (el server-side desde Vercel es bloqueado con 403).
+      const response = await fetch(SITE.leadsEndpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(buildWebhookPayload(validation.lead, SITE.leadsEndpoint)),
       });
       const payload = (await response.json().catch(() => null)) as {
-        ok: boolean;
-        error?: string;
-        errors?: LeadErrors;
+        success?: string | boolean;
+        message?: string;
       } | null;
+      const succeeded = payload?.success === true || payload?.success === "true";
 
-      if (response.ok && payload?.ok) {
+      if (response.ok && succeeded) {
         setStatus("success");
         track("lead_form_success");
         requestAnimationFrame(() => successRef.current?.focus());
         return;
       }
 
-      if (response.status === 422 && payload?.errors) {
-        setStatus("idle");
-        setErrors(payload.errors);
-        focusFirstError(payload.errors);
-        return;
-      }
-
+      // Nunca fingimos éxito: distinguimos "falta activar" del error genérico.
+      const needsActivation = /activation/i.test(payload?.message ?? "");
       setStatus("error");
-      setServerError(payload?.error ?? "No pudimos registrar tu solicitud.");
+      setServerError(
+        needsActivation
+          ? "El buzón de solicitudes aún no está activado."
+          : "No pudimos registrar tu solicitud en este momento. Inténtalo de nuevo.",
+      );
       track("lead_form_error", { status: response.status });
       requestAnimationFrame(() => alertRef.current?.focus());
     } catch {
       setStatus("error");
-      setServerError("No pudimos conectar con el servidor. Revisa tu conexión.");
+      setServerError("No pudimos conectar en este momento. Revisa tu conexión.");
       track("lead_form_error", { status: 0 });
       requestAnimationFrame(() => alertRef.current?.focus());
     }

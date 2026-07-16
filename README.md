@@ -41,18 +41,24 @@ Copia `.env.example` a `.env.local`:
 
 - Cliente: `src/components/LeadForm.tsx` (estados `loading/success/error`,
   errores por campo, honeypot anti-spam, foco gestionado).
-- API: `src/app/api/leads/route.ts` — valida con `src/lib/leads.ts` y reenvía
-  al webhook. No registra datos personales en logs.
-- La validación es la misma en cliente y servidor (`validateLead`).
+- Envío **directo desde el navegador** a FormSubmit (`src/components/LeadForm.tsx`):
+  valida con `validateLead`, arma el payload con `buildWebhookPayload` y lee el
+  campo `success` de la respuesta — **nunca finge éxito**.
+- Endpoint configurable con `NEXT_PUBLIC_LEADS_ENDPOINT` (por defecto el buzón
+  de MyFix en FormSubmit).
 
-> **FormSubmit (importante)**: al enviarse desde el servidor, la API añade
-> `Origin`/`Referer` con `NEXT_PUBLIC_SITE_URL` (FormSubmit rechaza peticiones
-> sin origen de navegador) y **verifica el campo `success`** de la respuesta,
-> no solo el status HTTP: FormSubmit responde 200 aunque rechace. La **primera
-> vez** hay que abrir el correo de activación en `myfixperu@gmail.com` y hacer
-> clic en **"Activate Form"**; hasta entonces la API responde 502 con un aviso
-> claro (nunca finge éxito). La activación queda ligada al `Origin`, así que
-> repite el clic tras cambiar de dominio (localhost → producción).
+> **¿Por qué client-side y no un endpoint server-side?** FormSubmit está detrás
+> de **Cloudflare**, que responde **HTTP 403 (challenge "Just a moment…")** a las
+> peticiones desde IPs de datacenter como las de Vercel. Un proxy server-side
+> (`/api/leads`) por tanto **no funciona en producción**. El navegador real pasa
+> el challenge sin problema, así que el formulario envía directo — el mismo
+> patrón probado de la web anterior (`../myfix`).
+>
+> **Activación de FormSubmit (por origen)**: la primera vez que se envía desde un
+> origen nuevo, FormSubmit manda un correo de activación a `myfixperu@gmail.com`
+> con la URL del sitio; hay que abrirlo y clic en **"Activate Form"**. Hasta
+> entonces el formulario muestra "El buzón aún no está activado" (sin fingir
+> éxito). Repite el clic al estrenar dominio (localhost → vercel → dominio propio).
 
 ## Imágenes
 
