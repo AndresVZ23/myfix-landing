@@ -107,9 +107,15 @@ export async function POST(request: Request) {
     });
     clearTimeout(timeout);
 
+    // DIAGNÓSTICO TEMPORAL: expone el estado real del webhook para depurar
+    // el 502 en producción. Se retira tras el diagnóstico.
+    const debugRaw = await response.clone().text().catch(() => "");
     if (!response.ok) {
       console.error(`[leads] el webhook respondió HTTP ${response.status}`);
-      return NextResponse.json({ ok: false, error: genericError }, { status: 502 });
+      return NextResponse.json(
+        { ok: false, error: genericError, _debug: { status: response.status, body: debugRaw.slice(0, 300) } },
+        { status: 502 },
+      );
     }
 
     // FormSubmit responde 200 aunque rechace: hay que leer su campo `success`.
@@ -130,6 +136,12 @@ export async function POST(request: Request) {
             error: needsActivation
               ? "El buzón de solicitudes aún no está activado. Escríbenos directamente mientras lo habilitamos."
               : genericError,
+            _debug: {
+              status: response.status,
+              success: payload?.success ?? null,
+              message: payload?.message ?? debugRaw.slice(0, 300),
+              forwardedOrigin: resolveForwardOrigin(request),
+            },
           },
           { status: 502 },
         );
