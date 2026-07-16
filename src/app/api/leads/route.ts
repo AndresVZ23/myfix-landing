@@ -7,6 +7,23 @@ export const runtime = "nodejs";
 const WEBHOOK_TIMEOUT_MS = 10_000;
 
 /**
+ * Origen del navegador que hizo la petición. FormSubmit exige un `Origin`
+ * de navegador y la activación es por-origen, así que reenviamos el origen
+ * REAL de la petición (autocorrige el dominio en local, preview y prod sin
+ * depender de configuración). Cae a `SITE.url` solo si no llega ninguno.
+ */
+function resolveForwardOrigin(request: Request): string {
+  const origin = request.headers.get("origin");
+  if (origin) return origin;
+  const host = request.headers.get("host");
+  if (host) {
+    const proto = request.headers.get("x-forwarded-proto") ?? "https";
+    return `${proto}://${host}`;
+  }
+  return SITE.url;
+}
+
+/**
  * Recibe una solicitud de acceso y la reenvía al webhook de leads
  * (`LEADS_WEBHOOK_URL`). Nunca simula éxito: si el webhook no está
  * configurado o falla, responde con un error claro. No registra datos
@@ -76,9 +93,14 @@ export async function POST(request: Request) {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        // FormSubmit exige un origen de navegador; server-side lo declaramos
-        // con la URL pública del sitio.
-        ...(isFormSubmit ? { Origin: SITE.url, Referer: `${SITE.url}/` } : {}),
+        // FormSubmit exige un origen de navegador; reenviamos el de la
+        // petición real (autocorrige el dominio en cualquier entorno).
+        ...(isFormSubmit
+          ? (() => {
+              const origin = resolveForwardOrigin(request);
+              return { Origin: origin, Referer: `${origin}/` };
+            })()
+          : {}),
       },
       body: JSON.stringify(buildWebhookPayload(validation.lead, webhookUrl)),
       signal: controller.signal,
