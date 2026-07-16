@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { buildWebhookPayload, validateLead } from "@/lib/leads";
+import { buildWebhookPayload, isFormSubmitUrl, validateLead } from "@/lib/leads";
+import { SITE } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -63,12 +64,22 @@ export async function POST(request: Request) {
     );
   }
 
+  const isFormSubmit = isFormSubmitUrl(webhookUrl);
+  const genericError =
+    "No pudimos registrar tu solicitud en este momento. Inténtalo de nuevo o escríbenos directamente.";
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
     const response = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        // FormSubmit exige un origen de navegador; server-side lo declaramos
+        // con la URL pública del sitio.
+        ...(isFormSubmit ? { Origin: SITE.url, Referer: `${SITE.url}/` } : {}),
+      },
       body: JSON.stringify(buildWebhookPayload(validation.lead, webhookUrl)),
       signal: controller.signal,
     });
@@ -76,26 +87,36 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       console.error(`[leads] el webhook respondió HTTP ${response.status}`);
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "No pudimos registrar tu solicitud en este momento. Inténtalo de nuevo o escríbenos directamente.",
-        },
-        { status: 502 },
-      );
+      return NextResponse.json({ ok: false, error: genericError }, { status: 502 });
+    }
+
+    // FormSubmit responde 200 aunque rechace: hay que leer su campo `success`.
+    // Nunca simulamos éxito (regla de credibilidad del brief).
+    if (isFormSubmit) {
+      const payload = (await response.json().catch(() => null)) as
+        | { success?: string | boolean; message?: string }
+        | null;
+      const succeeded = payload?.success === true || payload?.success === "true";
+      if (!succeeded) {
+        const needsActivation = /activation/i.test(payload?.message ?? "");
+        console.error(
+          `[leads] FormSubmit rechazó el envío${needsActivation ? " (formulario sin activar)" : ""}`,
+        );
+        return NextResponse.json(
+          {
+            ok: false,
+            error: needsActivation
+              ? "El buzón de solicitudes aún no está activado. Escríbenos directamente mientras lo habilitamos."
+              : genericError,
+          },
+          { status: 502 },
+        );
+      }
     }
   } catch (error) {
     const reason = error instanceof Error ? error.name : "desconocido";
     console.error(`[leads] error al contactar el webhook (${reason})`);
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "No pudimos registrar tu solicitud en este momento. Inténtalo de nuevo o escríbenos directamente.",
-      },
-      { status: 502 },
-    );
+    return NextResponse.json({ ok: false, error: genericError }, { status: 502 });
   }
 
   return NextResponse.json({ ok: true });

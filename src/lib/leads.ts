@@ -165,6 +165,15 @@ export function validateLead(data: unknown): LeadValidation {
  * (el buzón actual de MyFix), se incluyen sus claves de configuración;
  * para cualquier otro webhook son campos extra inofensivos.
  */
+/** ¿El webhook es FormSubmit? (exige headers de origen y devuelve `success`). */
+export function isFormSubmitUrl(webhookUrl: string): boolean {
+  try {
+    return new URL(webhookUrl).hostname.endsWith("formsubmit.co");
+  } catch {
+    return false;
+  }
+}
+
 export function buildWebhookPayload(
   lead: Lead,
   webhookUrl: string,
@@ -182,14 +191,7 @@ export function buildWebhookPayload(
     Origen: "Landing myfix_app",
   };
 
-  let isFormSubmit = false;
-  try {
-    isFormSubmit = new URL(webhookUrl).hostname.endsWith("formsubmit.co");
-  } catch {
-    isFormSubmit = false;
-  }
-
-  if (isFormSubmit) {
+  if (isFormSubmitUrl(webhookUrl)) {
     return {
       _subject: `Nueva solicitud de acceso — ${lead.name} (${lead.company})`,
       _template: "table",

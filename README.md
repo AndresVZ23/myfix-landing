@@ -45,6 +45,15 @@ Copia `.env.example` a `.env.local`:
   al webhook. No registra datos personales en logs.
 - La validación es la misma en cliente y servidor (`validateLead`).
 
+> **FormSubmit (importante)**: al enviarse desde el servidor, la API añade
+> `Origin`/`Referer` con `NEXT_PUBLIC_SITE_URL` (FormSubmit rechaza peticiones
+> sin origen de navegador) y **verifica el campo `success`** de la respuesta,
+> no solo el status HTTP: FormSubmit responde 200 aunque rechace. La **primera
+> vez** hay que abrir el correo de activación en `myfixperu@gmail.com` y hacer
+> clic en **"Activate Form"**; hasta entonces la API responde 502 con un aviso
+> claro (nunca finge éxito). La activación queda ligada al `Origin`, así que
+> repite el clic tras cambiar de dominio (localhost → producción).
+
 ## Imágenes
 
 La página usa la serie fotográfica **"MyFix · Usuarios en el mundo real"**
